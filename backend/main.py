@@ -17,11 +17,19 @@ project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+# ─── Robust Imports ──────────────────────────────────────────────
+try:
+    from backend.models.database import init_db
+    from backend.routers.routes import router as routes_router
+    from backend.routers.auth import router as auth_router
+except ImportError:
+    # Fallback for when running directly inside the backend folder
+    from models.database import init_db
+    from routers.routes import router as routes_router
+    from routers.auth import router as auth_router
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.models.database import init_db
-from backend.routers.routes import router as routes_router
-from backend.routers.auth import router as auth_router
 
 # ─── Create FastAPI app ──────────────────────────────────────────
 app = FastAPI(

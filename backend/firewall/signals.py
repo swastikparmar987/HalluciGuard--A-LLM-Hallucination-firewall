@@ -9,14 +9,20 @@ HalluciGuard — Scoring Pipeline
 
 import re
 import os
-import spacy
-from concurrent.futures import ThreadPoolExecutor
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from backend.firewall.llm_client import call_llm
+# Global cache for SpaCy model
+_nlp = None
 
-# ─── Load SpaCy model ONCE at module level ──────────────────────
-nlp = spacy.load("en_core_web_sm")
+def get_nlp():
+    """Lazy-load SpaCy model to prevent build timeouts."""
+    global _nlp
+    if _nlp is None:
+        import spacy
+        try:
+            _nlp = spacy.load("en_core_web_sm")
+        except Exception:
+            # Fallback to empty model if load fails
+            _nlp = spacy.blank("en")
+    return _nlp
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -165,6 +171,7 @@ def signal_grounding(response: str, s1_score: float) -> dict:
     High entity density in an inconsistent response = higher risk.
     """
     try:
+        nlp = get_nlp()
         doc = nlp(response)
         allowed_labels = {"DATE", "CARDINAL", "PERCENT", "MONEY", "QUANTITY", "PERSON", "ORG", "GPE", "LOC"}
 

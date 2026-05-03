@@ -9,8 +9,11 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # Database file lives next to backend/
-DATABASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite:///{os.path.join(DATABASE_DIR, 'halluciguard.db')}"
+if os.environ.get("IS_VERCEL") == "true":
+    DATABASE_URL = "sqlite:////tmp/halluciguard.db"
+else:
+    DATABASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATABASE_URL = f"sqlite:///{os.path.join(DATABASE_DIR, 'halluciguard.db')}"
 
 engine = create_engine(
     DATABASE_URL,

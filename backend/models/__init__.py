@@ -1,1 +1,1 @@
-# Make models a package
+# models package

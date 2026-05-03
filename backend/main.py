@@ -14,6 +14,9 @@ load_dotenv(dotenv_path=env_path)
 
 # Add project root to Python path so imports work
 project_root = str(Path(__file__).resolve().parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.models.database import init_db

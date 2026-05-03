@@ -8,8 +8,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Database file: use /tmp for cloud environments to ensure write access
-if os.environ.get("IS_VERCEL") == "true" or os.environ.get("RENDER") == "true":
+# Database file lives next to backend/
+if os.environ.get("IS_VERCEL") == "true":
     DATABASE_URL = "sqlite:////tmp/halluciguard.db"
 else:
     DATABASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

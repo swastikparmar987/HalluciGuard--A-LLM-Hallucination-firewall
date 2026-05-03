@@ -11,7 +11,7 @@ from backend.firewall.signals import (
     signal_consistency,
     signal_confidence,
     signal_grounding,
-    get_nlp
+    nlp  # Reuse module-level SpaCy instance
 )
 from backend.firewall.search_util import deep_fact_check
 
@@ -24,9 +24,6 @@ def get_entities_set(text: str) -> set:
     Extract factual entities (dates, numbers, quantities) from text.
     Used for the Confident Inconsistency Override check.
     """
-    nlp = get_nlp()
-    if not nlp:
-        return set(re.findall(r'\b[A-Z][a-z]+\b', text))
     doc = nlp(text)
     entities = set()
     for ent in doc.ents:
@@ -42,12 +39,8 @@ def _build_heatmap(response: str, s1_score: float, s2_score: float, s3_score: fl
     Build a sentence-level heatmap showing which parts of the response
     are most likely hallucinated.
     """
-    nlp = get_nlp()
-    if not nlp:
-        sentences = [s.strip() for s in re.split(r'[.!?]\s+', response) if s.strip()]
-    else:
-        doc = nlp(response)
-        sentences = list(doc.sents)
+    doc = nlp(response)
+    sentences = list(doc.sents)
     heatmap = []
 
     for sent in sentences:

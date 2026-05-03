@@ -25,6 +25,8 @@ def get_entities_set(text: str) -> set:
     Used for the Confident Inconsistency Override check.
     """
     nlp = get_nlp()
+    if not nlp:
+        return set(re.findall(r'\b[A-Z][a-z]+\b', text))
     doc = nlp(text)
     entities = set()
     for ent in doc.ents:
@@ -41,8 +43,11 @@ def _build_heatmap(response: str, s1_score: float, s2_score: float, s3_score: fl
     are most likely hallucinated.
     """
     nlp = get_nlp()
-    doc = nlp(response)
-    sentences = list(doc.sents)
+    if not nlp:
+        sentences = [s.strip() for s in re.split(r'[.!?]\s+', response) if s.strip()]
+    else:
+        doc = nlp(response)
+        sentences = list(doc.sents)
     heatmap = []
 
     for sent in sentences:

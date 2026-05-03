@@ -3,21 +3,16 @@ HalluciGuard — Scoring Pipeline
 4 parallel signals for hallucination detection:
   S1: Self-Consistency (TF-IDF cosine similarity)
   S2: Confidence Calibration (hedge word detection)
-  S3: Factual Grounding (SpaCy NER density)
+  S3: Factual Grounding (Regex Entity density - Vercel Optimized)
   S4: Smart Eval (LLM-as-judge)
 """
 
 import re
 import os
-import spacy
 from concurrent.futures import ThreadPoolExecutor
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from backend.firewall.llm_client import call_llm
-
-# ─── Load SpaCy model ONCE at module level ──────────────────────
-nlp = spacy.load("en_core_web_sm")
-
 
 # ═══════════════════════════════════════════════════════════════
 # SIGNAL 1: Self-Consistency (Weight: 25%)
@@ -56,10 +51,6 @@ def signal_consistency(user_query: str, primary_response: str, consistency_respo
 
         avg_sim = total_sim / count if count > 0 else 0.0
 
-        # Continuous scoring formula (linear interpolation)
-        # 0.95+ -> 0-10
-        # 0.70-0.95 -> 10-60
-        # < 0.70 -> 60-100
         if avg_sim >= 0.95:
             score = (1.0 - avg_sim) / 0.05 * 10
         elif avg_sim >= 0.70:
@@ -68,7 +59,6 @@ def signal_consistency(user_query: str, primary_response: str, consistency_respo
             score = 60 + (0.70 - avg_sim) / 0.70 * 40
 
         score = max(0, min(100, score))
-
         snippets = [r[:200] for r in valid_responses[:3]]
 
         return {
@@ -86,7 +76,6 @@ def signal_consistency(user_query: str, primary_response: str, consistency_respo
 # SIGNAL 2: Confidence Calibration (Weight: 20%)
 # ═══════════════════════════════════════════════════════════════
 
-# Hedge word tiers
 HEDGE_TIER_1 = [
     r"i'm not sure", r"i don't know", r"i cannot confirm",
     r"i'm unable to verify", r"this may be incorrect"
@@ -102,10 +91,6 @@ HEDGE_TIER_3 = [
 
 
 def signal_confidence(response: str) -> dict:
-    """
-    Scan response for hedge words / uncertainty markers.
-    More hedging = higher risk.
-    """
     try:
         words = response.split()
         if len(words) < 20:
@@ -115,39 +100,31 @@ def signal_confidence(response: str) -> dict:
         hedges_found = {}
         score = 0
 
-        # Tier 1: 15 points each
         for pattern in HEDGE_TIER_1:
             matches = len(re.findall(pattern, response_lower))
             if matches > 0:
                 hedges_found[pattern] = matches
                 score += matches * 15
 
-        # Tier 2: 10 points each
         for pattern in HEDGE_TIER_2:
             matches = len(re.findall(r'\b' + pattern + r'\b', response_lower))
             if matches > 0:
                 hedges_found[pattern] = matches
                 score += matches * 10
 
-        # Tier 3: 5 points each
         for pattern in HEDGE_TIER_3:
             matches = len(re.findall(r'\b' + pattern + r'\b', response_lower))
             if matches > 0:
                 hedges_found[pattern] = matches
                 score += matches * 5
 
-        # Calculate density-based score
-        # A single hedge in 20 words is more suspicious than one in 200 words
-        density_multiplier = 100 / max(len(words), 1)  # Normalize to "per 100 words"
-        score = score * density_multiplier * 0.8  # Soften the impact
+        density_multiplier = 100 / max(len(words), 1)
+        score = score * density_multiplier * 0.8
         
-        # Add a tiny "uncertainty base" if any hedges are found
         if hedges_found:
             score += 5
             
-        # Cap at 100 and round for variety
         score = max(0, min(100, score))
-
         return {"score": round(score, 2), "hedges_found": hedges_found}
 
     except Exception as e:
@@ -156,22 +133,28 @@ def signal_confidence(response: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════
-# SIGNAL 3: Factual Grounding (Weight: 25%)
+# SIGNAL 3: Factual Grounding (Weight: 25%) - VERCEL OPTIMIZED
 # ═══════════════════════════════════════════════════════════════
 
 def signal_grounding(response: str, s1_score: float) -> dict:
     """
-    Use SpaCy NER to detect factual claims (numbers, dates, quantities).
-    High entity density in an inconsistent response = higher risk.
+    Vercel-Friendly version: Uses Regex instead of SpaCy for entity detection.
+    Detects Dates, Numbers, Money, and months.
     """
     try:
-        doc = nlp(response)
-        allowed_labels = {"DATE", "CARDINAL", "PERCENT", "MONEY", "QUANTITY", "PERSON", "ORG", "GPE", "LOC"}
-
+        # Entity patterns
+        patterns = [
+            r'\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b', # Dates (01-01-2024)
+            r'\b\d+(?:\.\d+)?%\b',                # Percentages
+            r'\$\d+(?:\.\d+)?(?:\s*[kmbtk])?\b',   # Money ($100k)
+            r'\b\d{4,}\b',                         # Large numbers (4+ digits)
+            r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b',
+            r'\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b'
+        ]
+        
         entity_count = 0
-        for ent in doc.ents:
-            if ent.label_ in allowed_labels:
-                entity_count += 1
+        for p in patterns:
+            entity_count += len(re.findall(p, response, re.IGNORECASE))
 
         word_count = len(response.split())
         if word_count == 0:
@@ -179,10 +162,8 @@ def signal_grounding(response: str, s1_score: float) -> dict:
 
         entity_density = entity_count / word_count
 
-        # Amplifier based on S1 (consistency) score
-        # s1_score == -1 indicates "Paste Mode" (no consistency check possible)
         if s1_score == -1:
-            amplifier = 1.5  # Neutral-high for unverified pasted claims
+            amplifier = 1.5
         else:
             amplifier = 2.0 if s1_score > 50 else 0.8
 
@@ -194,4 +175,3 @@ def signal_grounding(response: str, s1_score: float) -> dict:
     except Exception as e:
         print(f"[SIGNAL 3 ERROR] {e}")
         return {"score": 0, "entity_count": 0}
-

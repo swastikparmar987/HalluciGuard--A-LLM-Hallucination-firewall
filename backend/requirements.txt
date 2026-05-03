@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+spacy
+scikit-learn
+requests
+python-dotenv
+aiofiles
+ibmcloudant
+duckduckgo-search

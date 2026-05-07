@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, Lock, Mail, ChevronRight, Cpu, Wallet, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
+const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+
 /* ── UI Components ── */
 function AuthInput({ icon: Icon, label, type, value, onChange, placeholder }) {
   return (
@@ -40,7 +42,7 @@ export default function AuthPage({ mode: initialMode = 'login' }) {
     setLoading(true)
     setError('')
 
-    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup'
+    const endpoint = mode === 'login' ? `${API_BASE}/auth/login` : `${API_BASE}/auth/signup`
     const body = mode === 'login' 
       ? { email, password } 
       : { email, password, name }

@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import HomePage from './pages/HomePage'
 import AuthPage from './pages/AuthPage'
 import SettingsPage from './pages/Settings'
+import HowItWorks from './pages/HowItWorks'
 
 // --- PROTECTED ROUTE COMPONENT ---
 function ProtectedRoute({ children }) {
@@ -115,6 +116,7 @@ function AppShell({ children }) {
             { name: 'Chat', path: '/chat', icon: Layout },
             { name: 'History', path: '/history', icon: BarChart3 },
             { name: 'Settings', path: '/settings', icon: Settings },
+            { name: 'How it works', path: '/how-it-works', icon: Shield },
           ].map((item) => (
             <NavLink 
               key={item.path}
@@ -171,6 +173,7 @@ function App() {
           <Route path="/history" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/dashboard" element={<Navigate to="/history" replace />} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/how-it-works" element={<ProtectedRoute><HowItWorks /></ProtectedRoute>} />
         </Routes>
       </AppShell>
     </Router>

@@ -668,6 +668,7 @@ export default function HomePage() {
                   { label: 'Launch Chat', path: '/chat' },
                   { label: 'Query History', path: '/history' },
                   { label: 'Settings', path: '/settings' },
+                  { label: 'How it Works', path: '/how-it-works' },
                   { label: 'Sign In', path: '/login' },
                 ].map(link => (
                   <li key={link.path}>

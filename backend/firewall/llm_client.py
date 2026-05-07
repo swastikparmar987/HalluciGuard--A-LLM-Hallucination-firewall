@@ -37,6 +37,12 @@ KEY_COOLDOWN = 300          # 5 minute cooldown for a single key
 _key_index = 0              # Global round-robin index
 _key_lock = threading.Lock()
 
+# ── Groq API Tracking ───────────────────────────────────────────
+GROQ_API_KEYS = [k.strip() for k in os.getenv("GROQ_API_KEYS", "").split(",") if k.strip()]
+_groq_key_failures = {}
+GROQ_KEY_COOLDOWN = 60
+_groq_key_index = 0
+
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
@@ -51,12 +57,11 @@ GEMINI_MODELS = [
 # ── Per-model failure tracking ──────────────────────────────────
 _model_failures = {}        # model -> timestamp of last full exhaustion
 COOLDOWN_SECONDS = 120      # Skip exhausted models for 120s
-MAX_KEYS_PER_MODEL = 5      # Try up to 5 keys per model (increased for efficiency)
 
 # ── Global Gemini exhaustion tracking ───────────────────────────
 _all_gemini_exhausted_at = 0.0
 _gemini_exhaustion_lock = threading.Lock()
-ALL_GEMINI_COOLDOWN = 180   # Skip ALL Gemini for 3 minutes when fully exhausted
+ALL_GEMINI_COOLDOWN = 60    # Skip ALL Gemini for 1 minute when fully exhausted
 
 # ── Ollama health tracking ──────────────────────────────────────
 _ollama_available = None     # None = unknown, True/False = last known state
@@ -65,7 +70,7 @@ OLLAMA_HEALTH_INTERVAL = 30  # Re-check Ollama availability every 30s
 
 # ── Stats for logging ──────────────────────────────────────────
 _stats_lock = threading.Lock()
-_provider_stats = {"gemini": 0, "ollama": 0, "fallback": 0}
+_provider_stats = {"groq": 0, "gemini": 0, "ollama": 0, "fallback": 0}
 
 
 def get_provider_stats() -> dict:
@@ -128,8 +133,8 @@ def _mark_all_gemini_exhausted():
     logger.warning("[GEMINI ALL EXHAUSTED] Routing to fallback")
 
 
-def _get_next_healthy_keys(count: int) -> list:
-    """Get next set of healthy keys using round-robin rotation."""
+def _get_next_healthy_keys() -> list:
+    """Get all healthy keys using round-robin rotation as starting point."""
     global _key_index
     if not GEMINI_API_KEYS: return []
     
@@ -140,8 +145,23 @@ def _get_next_healthy_keys(count: int) -> list:
             _key_index += 1
             if _is_key_healthy(key):
                 healthy_keys.append(key)
-                if len(healthy_keys) >= count:
-                    break
+    return healthy_keys
+
+def _is_groq_key_healthy(key: str) -> bool:
+    fail_time = _groq_key_failures.get(key)
+    if fail_time is None: return True
+    return (time.time() - fail_time) > GROQ_KEY_COOLDOWN
+
+def _get_next_healthy_groq_keys() -> list:
+    global _groq_key_index
+    if not GROQ_API_KEYS: return []
+    healthy_keys = []
+    with _key_lock:
+        for _ in range(len(GROQ_API_KEYS)):
+            key = GROQ_API_KEYS[_groq_key_index % len(GROQ_API_KEYS)]
+            _groq_key_index += 1
+            if _is_groq_key_healthy(key):
+                healthy_keys.append(key)
     return healthy_keys
 
 
@@ -159,6 +179,34 @@ def _check_ollama_health() -> bool:
         _ollama_available = False
     _ollama_last_check = now
     return _ollama_available
+
+def call_groq(prompt: str, model: str = "llama3-70b-8192") -> str:
+    """Call Groq API for blazing fast Llama 3 inference."""
+    keys_to_try = _get_next_healthy_groq_keys()
+    if not keys_to_try:
+        return None
+        
+    for key in keys_to_try:
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+                timeout=5  # Fast timeout for Groq
+            )
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            elif response.status_code == 429:
+                _groq_key_failures[key] = time.time()
+                logger.warning(f"[GROQ] Key {key[:8]}... RATE LIMITED (429)")
+            else:
+                logger.warning(f"[GROQ] Key {key[:8]}... failed: {response.text[:100]}")
+        except requests.exceptions.Timeout:
+             logger.warning(f"[GROQ] Key {key[:8]}... TIMEOUT")
+        except Exception as e:
+             logger.error(f"[GROQ ERROR] {e}")
+             
+    return None
 
 
 def call_gemini(prompt: str, model: str = None) -> str:
@@ -181,7 +229,7 @@ def call_gemini(prompt: str, model: str = None) -> str:
             models_skipped += 1
             continue
 
-        keys_to_try = _get_next_healthy_keys(MAX_KEYS_PER_MODEL)
+        keys_to_try = _get_next_healthy_keys()
         if not keys_to_try:
             continue
 
@@ -210,10 +258,15 @@ def call_gemini(prompt: str, model: str = None) -> str:
                             return text
                 elif response.status_code == 429:
                     # Key specifically exhausted
+                    logger.warning(f"[GEMINI] Key {current_key[:8]}... RATE LIMITED (429)")
                     _mark_key_failed(current_key)
+                else:
+                    logger.warning(f"[GEMINI] Key {current_key[:8]}... failed with {response.status_code}: {response.text[:100]}")
 
-            except Exception:
-                pass
+            except requests.exceptions.Timeout:
+                logger.warning(f"[GEMINI] Key {current_key[:8]}... TIMEOUT")
+            except Exception as e:
+                logger.error(f"[GEMINI ERROR] {e}")
 
         if not model_success:
             _mark_model_exhausted(current_model)
@@ -232,7 +285,7 @@ def call_ollama(prompt: str, retries: int = 2) -> str:
             response = requests.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-                timeout=15  # Faster timeout for better UX
+                timeout=120  # Extremely high timeout because Ollama queues parallel requests
             )
             response.raise_for_status()
             result = response.json().get("response", "")
@@ -260,13 +313,19 @@ def call_llm(prompt: str, model: str = None) -> str:
     - Guaranteed to NEVER throw an exception or return None.
     """
     try:
-        # ── Step 1: Try Gemini models ────────────────────────────────
+        # ── Step 1: Try Groq (Primary Fast Provider) ─────────────────
+        result = call_groq(prompt)
+        if result:
+            _record_provider("groq")
+            return result
+
+        # ── Step 2: Try Gemini models (Backup) ───────────────────────
         result = call_gemini(prompt, model=model)
         if result:
             _record_provider("gemini")
             return result
 
-        # ── Step 2: Gemini failed/exhausted → Try Ollama ─────────────
+        # ── Step 3: Gemini failed/exhausted → Try Ollama ─────────────
         if _check_ollama_health():
             result = call_ollama(prompt)
             if result:

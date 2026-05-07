@@ -9,10 +9,18 @@ HalluciGuard — Scoring Pipeline
 
 import re
 import os
+import spacy
 from concurrent.futures import ThreadPoolExecutor
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from backend.firewall.llm_client import call_llm
+
+# Initialize SpaCy once at module level
+try:
+    nlp = spacy.load("en_core_web_sm")
+except Exception:
+    # Fallback if model not found
+    nlp = None
 
 # ═══════════════════════════════════════════════════════════════
 # SIGNAL 1: Self-Consistency (Weight: 25%)

@@ -20,9 +20,9 @@ services:
         sync: false # User will provide
 
   # Frontend Static Site
-  - type: static
+  - type: web
     name: halluciguard-ui
-    env: node
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:

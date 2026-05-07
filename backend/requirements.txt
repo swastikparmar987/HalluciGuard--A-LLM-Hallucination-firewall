@@ -8,3 +8,4 @@ python-dotenv
 aiofiles
 ibmcloudant
 duckduckgo-search
+gunicorn

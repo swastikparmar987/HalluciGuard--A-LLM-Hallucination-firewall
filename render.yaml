@@ -1,0 +1,37 @@
+services:
+  # Backend API
+  - type: web
+    name: halluciguard-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -k uvicorn.workers.UvicornWorker backend.main:app
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ALLOWED_ORIGINS
+        value: "*" # We'll update this once the frontend URL is known
+      - key: ENABLE_SMART_EVAL
+        value: "true"
+      - key: WATSONX_URL
+        sync: false # User will provide
+      - key: WATSONX_APIKEY
+        sync: false # User will provide
+      - key: WATSONX_PROJECT_ID
+        sync: false # User will provide
+
+  # Frontend Static Site
+  - type: static
+    name: halluciguard-ui
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE
+        fromService:
+          type: web
+          name: halluciguard-api
+          property: host
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

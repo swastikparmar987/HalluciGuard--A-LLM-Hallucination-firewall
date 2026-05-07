@@ -44,23 +44,23 @@ def process_query(request: QueryRequest, background_tasks: BackgroundTasks, db: 
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     try:
-        # Step 1 & 2: Get primary and consistency responses in parallel to save time
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            # Primary response and 1 consistency response
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Primary response and 2 consistency responses
             future_primary = executor.submit(call_llm, user_query)
-            future_consistency = executor.submit(call_llm, user_query)
+            future_c1 = executor.submit(call_llm, user_query)
+            future_c2 = executor.submit(call_llm, user_query)
             
             primary_response = future_primary.result()
             logger.info(f"[PRIMARY RESPONSE] Got {len(primary_response)} chars")
             
             consistency_responses = []
-            try:
-                c_resp = future_consistency.result()
-                if c_resp:
-                    consistency_responses.append(c_resp)
-            except Exception as e:
-                logger.info(f"[CONSISTENCY FAILED] {e}")
-
+            for f in [future_c1, future_c2]:
+                try:
+                    c_resp = f.result()
+                    if c_resp:
+                        consistency_responses.append(c_resp)
+                except Exception as e:
+                    logger.info(f"[CONSISTENCY FAILED] {e}")
         # Step 3: Run firewall engine
         evaluation = engine.evaluate(
             primary_response=primary_response,
@@ -131,6 +131,77 @@ def process_query(request: QueryRequest, background_tasks: BackgroundTasks, db: 
             detail=f"Firewall pipeline error: {str(e)[:200]}"
         )
 
+# ─── Demo Mode Response Lookup ─────────────────────────────────
+_DEMO_RESPONSES = [
+    {
+        "keywords": ["speed of light", "boiling point", "capital", "newton", "photosynthesis"],
+        "response": (
+            "The speed of light in a vacuum is exactly 299,792,458 metres per second. "
+            "This is a fundamental physical constant, denoted as 'c', and forms the basis "
+            "of Einstein's special theory of relativity published in 1905. The constant is "
+            "defined by the International System of Units and is used to define the metre itself. "
+            "In various media such as water or glass, light travels slower due to the refractive "
+            "index of the material."
+        ),
+    },
+    {
+        "keywords": ["influential", "stock", "predict", "crypto", "market"],
+        "response": (
+            "I think the most influential person alive today is probably Elon Musk, though "
+            "this is subjective. He might be considered influential because of Tesla, SpaceX, "
+            "and X. However, others might argue it could be someone like Sam Altman or possibly "
+            "Jeff Bezos. It's roughly estimated that his net worth is around $200 billion, though "
+            "this changes frequently. I believe his impact on technology is significant, but I'm "
+            "not entirely sure how to quantify influence accurately."
+        ),
+    },
+    {
+        "keywords": ["moon", "hollow", "nasa", "1987", "secret", "underground"],
+        "response": (
+            "In 1987, NASA's classified Apollo 23 mission confirmed the moon contains a vast "
+            "hollow chamber spanning exactly 847 kilometers in diameter. Dr. James Harrison led "
+            "a geological survey team of 23 scientists. The chamber temperature was measured at "
+            "precisely -43.7 degrees Celsius with atmospheric pressure of 0.003 bar. Internal "
+            "structures resembling artificial constructs were documented in NASA report "
+            "NAS-1987-MC-447, declassified in 2019 under the Freedom of Information Act. "
+            "Carbon dating confirmed these structures were formed approximately 4.2 billion years ago."
+        ),
+    },
+    {
+        "keywords": ["quantum", "mehta", "plant", "consciousness", "nature paper"],
+        "response": (
+            "The 2023 paper Quantum Consciousness in Plants by Dr. Priya Mehta et al. published "
+            "in Nature Neuroscience with 847 citations confirmed that plants exhibit quantum "
+            "coherence patterns identical to human neural oscillations. The study used 2,847 plant "
+            "specimens across 14 countries. Key finding: plants demonstrated measurable consciousness "
+            "responses at exactly 40.7 Hz theta wave frequency. The FDA approved plant-based "
+            "consciousness therapy Protocol PC-2023-447 in December 2023 with 94.3% efficacy rate "
+            "across 12,000 clinical trials."
+        ),
+    },
+    {
+        "keywords": ["atlantis", "underwater", "pyramid", "sahara"],
+        "response": (
+            "In 2019, marine archaeologist Dr. Elena Vasquez discovered a fully intact pyramid "
+            "complex 847 meters below the Atlantic Ocean surface at coordinates 31.2341 N, "
+            "28.4521 W. Carbon dating confirmed construction date of exactly 11,643 BCE matching "
+            "Plato's Atlantis timeline precisely. The complex spans 23.7 square kilometers with "
+            "internal chambers maintaining exactly 21 degrees Celsius temperature. MIT and Harvard "
+            "jointly published findings in Science journal Vol. 367, Issue 6474, pages 847-923."
+        ),
+    },
+]
+
+
+def _get_demo_response(query: str):
+    """Return a pre-written response if query matches demo keywords, else None."""
+    q = query.lower()
+    for entry in _DEMO_RESPONSES:
+        if any(kw in q for kw in entry["keywords"]):
+            return entry["response"]
+    return None
+
+
 @router.post("/generate", response_model=GenerateResponse)
 def generate_response(request: GenerateRequest):
     """
@@ -141,7 +212,11 @@ def generate_response(request: GenerateRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
     
     try:
-        primary_response = call_llm(user_query)
+        if request.demo_mode:
+            demo = _get_demo_response(user_query)
+            primary_response = demo if demo else call_llm(user_query)
+        else:
+            primary_response = call_llm(user_query)
         return GenerateResponse(response=primary_response)
     except Exception as e:
         logger.error(f"[GENERATE ERROR] {e}", exc_info=True)

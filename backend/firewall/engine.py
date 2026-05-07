@@ -151,19 +151,20 @@ class FirewallEngine:
         # Runs INDEPENDENTLY of S1 TF-IDF score.
         # If the model is confident (low S2) but entities contradict
         # across responses, that's a dangerous hallucination pattern.
-        if s2 < 15 and len(consistency_responses) >= 3:
-            responses_for_entity = consistency_responses[:3]
-
+        if s2 < 15 and len(consistency_responses) >= 2:
+            responses_for_entity = consistency_responses[:2]
+            
+            # Extract entities from primary + 2 consistency responses
+            e_primary = get_entities_set(primary_response)
             e1 = get_entities_set(responses_for_entity[0]) if responses_for_entity[0] else set()
             e2 = get_entities_set(responses_for_entity[1]) if responses_for_entity[1] else set()
-            e3 = get_entities_set(responses_for_entity[2]) if responses_for_entity[2] else set()
 
             # If any response has no entities → treat as inconclusive = safe
-            if len(e1) == 0 or len(e2) == 0 or len(e3) == 0:
+            if len(e_primary) == 0 or len(e1) == 0 or len(e2) == 0:
                 entity_overlap = 0.6  # Inconclusive — don't trigger
             else:
-                intersection = e1 & e2 & e3
-                union = e1 | e2 | e3
+                intersection = e_primary & e1 & e2
+                union = e_primary | e1 | e2
                 if len(union) == 0:
                     entity_overlap = 1.0
                 else:

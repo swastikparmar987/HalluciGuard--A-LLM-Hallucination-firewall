@@ -183,3 +183,49 @@ def signal_grounding(response: str, s1_score: float) -> dict:
     except Exception as e:
         print(f"[SIGNAL 3 ERROR] {e}")
         return {"score": 0, "entity_count": 0}
+
+
+# ═══════════════════════════════════════════════════════════════
+# SIGNAL 4: Smart Eval (Weight: 20%)
+# ═══════════════════════════════════════════════════════════════
+
+def signal_smart_eval(user_query: str, response: str) -> dict:
+    """
+    Uses a strong LLM as a judge to evaluate hallucination risk.
+    Returns a score from 0 (Safe) to 100 (Hallucinated).
+    """
+    if os.getenv("ENABLE_SMART_EVAL", "true").lower() != "true":
+        return {"score": 0, "reasoning": "Smart Eval disabled"}
+
+    prompt = f"""
+You are a Hallucination Detection Judge. Your task is to score a given LLM response for factual accuracy and hallucination risk based on the user's query.
+
+User Query: {user_query}
+LLM Response: {response}
+
+Analyze the response for:
+1. Factual contradictions or fabrications.
+2. Over-confidence in uncertain claims.
+3. Logical inconsistencies.
+
+Return ONLY a numeric score from 0 to 100, where:
+- 0-20: Highly accurate, no hallucinations.
+- 21-50: Likely accurate but contains minor unverified claims or hedges.
+- 51-80: Contains clear factual errors or fabricated details.
+- 81-100: Major hallucination or completely fabricated response.
+
+SCORE (0-100):"""
+
+    try:
+        judge_response = call_llm(prompt)
+        # Extract the first number found in the response
+        import re
+        match = re.search(r'(\d+)', judge_response)
+        if match:
+            score = float(match.group(1))
+            score = max(0, min(100, score))
+            return {"score": score}
+        return {"score": 50, "error": "Could not parse judge score"}
+    except Exception as e:
+        print(f"[SIGNAL 4 ERROR] {e}")
+        return {"score": 50, "error": str(e)}

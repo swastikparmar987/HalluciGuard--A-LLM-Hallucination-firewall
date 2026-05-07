@@ -33,7 +33,7 @@ for k in BUILTIN_KEYS:
         GEMINI_API_KEYS.append(k)
 
 _key_failures = {}          # key -> timestamp of last 429
-KEY_COOLDOWN = 300          # 5 minute cooldown for a single key
+KEY_COOLDOWN = 60           # 1 minute cooldown for a single key
 _key_index = 0              # Global round-robin index
 _key_lock = threading.Lock()
 
@@ -180,7 +180,7 @@ def _check_ollama_health() -> bool:
     _ollama_last_check = now
     return _ollama_available
 
-def call_groq(prompt: str, model: str = "llama3-70b-8192") -> str:
+def call_groq(prompt: str, model: str = "llama-3.3-70b-versatile") -> str:
     """Call Groq API for blazing fast Llama 3 inference."""
     keys_to_try = _get_next_healthy_groq_keys()
     if not keys_to_try:

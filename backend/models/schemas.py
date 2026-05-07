@@ -28,7 +28,7 @@ class QueryLog(Base):
     s2_score = Column(Float, default=0.0)  # Confidence Calibration
     s3_score = Column(Float, default=0.0)  # Factual Grounding
     s4_score = Column(Float, default=0.0)  # Internet Audit
-    s5_score = Column(Float, default=0.0)  # Legacy/Unused
+    s5_score = Column(Float, default=0.0)  # Smart Eval (LLM-as-judge)
 
     override_triggered = Column(Boolean, default=False)
     reasoning = Column(Text, default="")
@@ -70,6 +70,7 @@ class QueryResponse(BaseModel):
 class GenerateRequest(BaseModel):
     query: str
     user_email: Optional[str] = None
+    demo_mode: bool = False
 
 class GenerateResponse(BaseModel):
     response: str
@@ -78,6 +79,7 @@ class EvaluateRequest(BaseModel):
     query: str
     response: str
     user_email: Optional[str] = None
+    demo_mode: bool = False
 
 class EvaluateResponse(BaseModel):
     evaluation: EvaluationResult

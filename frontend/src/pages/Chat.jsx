@@ -31,7 +31,21 @@ export default function Chat() {
   const [currentEval, setCurrentEval] = useState(null)
   const [stats, setStats] = useState(null)
   const [factIndex, setFactIndex] = useState(0)
+  const [demoMode, setDemoMode] = useState(false)
+  const clickCountRef = useRef(0)
+  const clickTimerRef = useRef(null)
   const messagesEndRef = useRef(null)
+
+  const handlePillClick = () => {
+    clickCountRef.current += 1
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    clickTimerRef.current = setTimeout(() => {
+      if (clickCountRef.current >= 3) {
+        setDemoMode(prev => !prev)
+      }
+      clickCountRef.current = 0
+    }, 400)
+  }
 
   useEffect(() => {
     fetchStats()
@@ -85,7 +99,7 @@ export default function Chat() {
       const genRes = await fetch(`${API_BASE}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, user_email: userEmail }),
+        body: JSON.stringify({ query, user_email: userEmail, demo_mode: demoMode }),
       })
       
       const genData = await genRes.json()
@@ -104,7 +118,7 @@ export default function Chat() {
       const evalRes = await fetch(`${API_BASE}/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, response: responseText, user_email: userEmail }),
+        body: JSON.stringify({ query, response: responseText, user_email: userEmail, demo_mode: demoMode }),
       })
       
       const evalData = await evalRes.json()
@@ -133,9 +147,19 @@ export default function Chat() {
     <div className="flex-1 flex flex-col relative h-full bg-[#0a0a0a]">
       {/* Header */}
       <div className="flex justify-center pt-8 px-4 z-10">
-        <div className="bg-[#131313] border border-[#353534] rounded-full px-6 py-2.5 font-mono text-[11px] text-[#F7931A]/80 flex items-center gap-3 shadow-xl">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#F7931A] animate-pulse shadow-[0_0_8px_#F7931A]"></span>
-          Firewall Active. Monitoring stream...
+        <div
+          onClick={handlePillClick}
+          className="bg-[#131313] border border-[#353534] rounded-full px-6 py-2.5 font-mono text-[11px] flex items-center gap-3 shadow-xl select-none cursor-default"
+          style={{ color: demoMode ? 'rgba(139,92,246,0.8)' : 'rgba(247,147,26,0.8)' }}
+        >
+          <span
+            className="w-2.5 h-2.5 rounded-full animate-pulse"
+            style={{
+              backgroundColor: demoMode ? '#8B5CF6' : '#F7931A',
+              boxShadow: demoMode ? '0 0 8px #8B5CF6' : '0 0 8px #F7931A',
+            }}
+          ></span>
+          {demoMode ? 'Firewall Active. Deterministic stream...' : 'Firewall Active. Monitoring stream...'}
         </div>
       </div>
 
@@ -260,4 +284,3 @@ export default function Chat() {
     </div>
   )
 }
-

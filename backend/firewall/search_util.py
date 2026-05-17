@@ -45,16 +45,39 @@ def deep_fact_check(user_query: str, primary_response: str) -> dict:
             "missing_entities": []
         }
 
-    # 2. Extract entities using SpaCy
+    # 2. Extract entities using SpaCy (with robust Regex fallback if SpaCy model not loaded)
     from backend.firewall.signals import nlp
+    import re
     
-    response_doc = nlp(primary_response)
-    
-    # Define factual entity types
-    FACTUAL_TYPES = {"DATE", "EVENT", "FAC", "GPE", "LOC", "MONEY", "NORP", "ORG", "PERSON", "PRODUCT", "QUANTITY", "PERCENT"}
-    
-    response_entities = {ent.text.lower().strip() for ent in response_doc.ents if ent.label_ in FACTUAL_TYPES}
-    
+    response_entities = set()
+    if nlp is not None:
+        try:
+            response_doc = nlp(primary_response)
+            # Define factual entity types
+            FACTUAL_TYPES = {"DATE", "EVENT", "FAC", "GPE", "LOC", "MONEY", "NORP", "ORG", "PERSON", "PRODUCT", "QUANTITY", "PERCENT"}
+            response_entities = {ent.text.lower().strip() for ent in response_doc.ents if ent.label_ in FACTUAL_TYPES}
+        except Exception as e:
+            logger.warning(f"[SPACY FAILED] Fallback to regex entity extraction: {e}")
+            nlp = None
+
+    if nlp is None:
+        # Fallback regex entity extraction: extract dates, numbers, money, capitalized phrases, and proper nouns
+        patterns = [
+            r'\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b', # Dates
+            r'\b\d+(?:\.\d+)?%\b',                # Percentages
+            r'\$\d+(?:\.\d+)?(?:\s*[kmbtk])?\b',   # Money
+            r'\b\d{4,}\b',                         # Large numbers (4+ digits)
+            r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b',
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'  # Proper nouns/capitalized names
+        ]
+        for p in patterns:
+            matches = re.findall(p, primary_response)
+            for m in matches:
+                # Filter out common starting-sentence words that happen to be capitalized
+                m_clean = m.strip().lower()
+                if m_clean not in {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "with", "by", "of", "based", "this", "it", "they", "we", "he", "she", "you", "i", "if", "then"}:
+                    response_entities.add(m_clean)
+
     if not response_entities:
         return {
             "grounding_score": 10,  # Low risk if no factual claims are made

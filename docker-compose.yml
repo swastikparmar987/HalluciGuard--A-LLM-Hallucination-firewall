@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: halluciguard-app
+    ports:
+      - "8080:80"
+    environment:
+      - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
+      # If you have specific individual keys:
+      - GEMINI_API_KEY_1=${GEMINI_API_KEY_1:-}
+      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2:-}
+      - GEMINI_API_KEY_3=${GEMINI_API_KEY_3:-}
+      # For local fallback to the concurrent Ollama service in this stack:
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
+      - ENABLE_SMART_EVAL=${ENABLE_SMART_EVAL:-true}
+      # CORS configuration (allow all by default, or specific host)
+      - ALLOWED_ORIGINS=*
+    volumes:
+      # Persists the SQLite database so user accounts and stats are kept between restarts
+      - sqlite_data:/app/backend
+    restart: always
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: halluciguard-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persists downloaded models (e.g. llama3.2:1b)
+      - ollama_data:/root/.ollama
+    restart: always
+
+volumes:
+  sqlite_data:
+    driver: local
+  ollama_data:
+    driver: local

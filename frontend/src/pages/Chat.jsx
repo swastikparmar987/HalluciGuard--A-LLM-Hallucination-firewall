@@ -13,7 +13,14 @@ import PostCard from '../components/PostCard'
 import HallucinationReport from '../components/HallucinationReport'
 import { LLM_FACTS } from '../data/facts'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const getApiBase = () => {
+  const base = import.meta.env.VITE_API_BASE || '/api';
+  if (base.startsWith('http') && !base.endsWith('/api')) {
+    return `${base}/api`;
+  }
+  return base;
+};
+const API_BASE = getApiBase();
 
 const ZONE_COLORS = {
   SAFE: '#F7931A',

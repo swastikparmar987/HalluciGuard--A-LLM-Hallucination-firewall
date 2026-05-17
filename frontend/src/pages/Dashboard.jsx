@@ -9,7 +9,14 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis, Tooltip
 } from 'recharts'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const getApiBase = () => {
+  const base = import.meta.env.VITE_API_BASE || '/api';
+  if (base.startsWith('http') && !base.endsWith('/api')) {
+    return `${base}/api`;
+  }
+  return base;
+};
+const API_BASE = getApiBase();
 
 const ZONE_COLORS = {
   SAFE: '#F7931A',    // Orange

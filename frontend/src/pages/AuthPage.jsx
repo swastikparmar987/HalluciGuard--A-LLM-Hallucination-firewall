@@ -3,7 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, Lock, Mail, ChevronRight, Cpu, Wallet, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const getApiBase = () => {
+  const base = import.meta.env.VITE_API_BASE || '/api';
+  if (base.startsWith('http') && !base.endsWith('/api')) {
+    return `${base}/api`;
+  }
+  return base;
+};
+const API_BASE = getApiBase();
 
 /* ── UI Components ── */
 function AuthInput({ icon: Icon, label, type, value, onChange, placeholder }) {
